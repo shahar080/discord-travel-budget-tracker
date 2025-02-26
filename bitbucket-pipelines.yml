@@ -8,5 +8,5 @@ pipelines:
             enabled: false
           script:
             - git clone --bare git@bitbucket.org:Shahar0080/discord-travel-budget-tracker.git
-            - cd azar.git
+            - cd discord-travel-budget-tracker.git
             - git push --mirror git@github.com:shahar080/discord-travel-budget-tracker.git
