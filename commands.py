@@ -2,7 +2,12 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 from database import db
+
+
+def is_allowed_user(interaction: discord.Interaction) -> bool:
+    return interaction.user.id in config.ALLOWED_IDS
 
 
 class BotCommands(commands.Cog):
@@ -11,6 +16,7 @@ class BotCommands(commands.Cog):
 
     @app_commands.command(name="spent", description="Log an expense")
     @app_commands.describe(amount="Amount spent", currency="Currency code", category="Expense category")
+    @app_commands.check(is_allowed_user)
     async def spent(self, interaction: discord.Interaction, amount: float, currency: str, category: str):
         success = await db.add_expense(interaction.user.id, amount, currency.upper(), category)
         if success is None:
@@ -25,6 +31,7 @@ class BotCommands(commands.Cog):
 
     @app_commands.command(name="total", description="View total spent in ILS")
     @app_commands.describe(_location="(Optional) View total spent in a specific location")
+    @app_commands.check(is_allowed_user)
     async def total(self, interaction: discord.Interaction, _location: str = None):
         total_spent = await db.get_total_spent(interaction.user.id, _location.lower() if _location else None)
         if _location:
@@ -35,6 +42,7 @@ class BotCommands(commands.Cog):
 
     @app_commands.command(name="breakdown", description="View expense breakdown by category")
     @app_commands.describe(_location="(Optional) Show breakdown for a specific location")
+    @app_commands.check(is_allowed_user)
     async def breakdown(self, interaction: discord.Interaction, _location: str = None):
         _breakdown = await db.get_breakdown(interaction.user.id, _location.lower() if _location else None)
         if not _breakdown:
@@ -62,6 +70,7 @@ class BotCommands(commands.Cog):
 
     @app_commands.command(name="location", description="Set your current location")
     @app_commands.describe(place="(Optional) Set current place")
+    @app_commands.check(is_allowed_user)
     async def location(self, interaction: discord.Interaction, place: str = None):
         if place:
             await db.set_location(interaction.user.id, place.lower())
