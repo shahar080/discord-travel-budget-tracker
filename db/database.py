@@ -1,7 +1,7 @@
 import asyncpg
 import requests
 
-import config
+from utils import config
 
 
 class Database:
@@ -24,7 +24,7 @@ class Database:
                     amount NUMERIC(10, 2) NOT NULL,
                     currency TEXT NOT NULL,
                     converted_amount NUMERIC(10, 2) NOT NULL,
-                    category TEXT NOT NULL,
+                    description TEXT NOT NULL,
                     location TEXT NOT NULL,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
@@ -42,7 +42,7 @@ class Database:
         data = response.json()
         return data["conversion_rates"].get(self.BASE_CURRENCY, 1.0)
 
-    async def add_expense(self, user_id, amount, currency, category):
+    async def add_expense(self, user_id, amount, currency, description):
         user_location = await self.get_location(user_id)
         if not user_location:
             return None
@@ -52,16 +52,16 @@ class Database:
         converted_amount = amount * conversion_rate
         async with self.db.acquire() as conn:
             await conn.execute("""
-                INSERT INTO expenses (user_id, amount, currency, converted_amount, category, location)
+                INSERT INTO expenses (user_id, amount, currency, converted_amount, description, location)
                 VALUES ($1, $2, $3, $4, $5, $6)
-            """, str(user_id), amount, currency.upper(), converted_amount, category, user_location)
+            """, str(user_id), amount, currency.upper(), converted_amount, description, user_location)
         return True
 
     async def get_total_spent(self, user_id, location=None):
         async with self.db.acquire() as conn:
             if location:
                 result = await conn.fetchval("""
-                    SELECT SUM(converted_amount) FROM expenses WHERE user_id = $1 AND location ILIKE $2
+                    SELECT SUM(converted_amount) FROM expenses WHERE user_id = $1 AND LOWER(location) = LOWER($2)
                 """, str(user_id), location)
             else:
                 result = await conn.fetchval("""
@@ -69,33 +69,42 @@ class Database:
                 """, str(user_id))
         return result if result else 0
 
-    async def get_breakdown(self, user_id, location=None):
-        """Get total spent per category, grouped by location, with original currency values."""
-        if self.db is None:
-            await self.connect()
-
+    async def get_breakdown(self, user_id, location=None, requires_id=False):
+        """Get total spent per description, grouped by location, with original currency values."""
         async with self.db.acquire() as conn:
+            columns = "id, location, amount, currency, converted_amount, timestamp" if requires_id else "location, amount, currency, converted_amount, timestamp"
+
             if location:
-                rows = await conn.fetch("""
-                    SELECT location, amount, currency, converted_amount 
-                    FROM expenses WHERE user_id = $1 AND location ILIKE $2 ORDER BY location
-                """, str(user_id), location)
+                query = f"""
+                    SELECT {columns}
+                    FROM expenses
+                    WHERE user_id = $1 AND LOWER(location) = LOWER($2)
+                    ORDER BY location
+                """
+                rows = await conn.fetch(query, str(user_id), location)
             else:
-                rows = await conn.fetch("""
-                    SELECT location, amount, currency, converted_amount 
-                    FROM expenses WHERE user_id = $1 ORDER BY location
-                """, str(user_id))
+                query = f"""
+                    SELECT {columns}
+                    FROM expenses
+                    WHERE user_id = $1
+                    ORDER BY location
+                """
+                rows = await conn.fetch(query, str(user_id))
 
         breakdown = {}
         for row in rows:
             loc = row["location"].lower()
             if loc not in breakdown:
                 breakdown[loc] = []
-            breakdown[loc].append({
+            expense = {
                 "amount": row["converted_amount"],
                 "original_amount": row["amount"],
-                "currency": row["currency"]
-            })
+                "currency": row["currency"],
+                "timestamp": row["timestamp"]
+            }
+            if requires_id:
+                expense['id'] = row['id']
+            breakdown[loc].append(expense)
 
         return breakdown
 
@@ -117,6 +126,30 @@ class Database:
         response = requests.get(f"https://v6.exchangerate-api.com/v6/{config.EXCHANGE_API_KEY}/codes")
         data = response.json()
         return {code for code, _ in data.get("supported_codes", [])}
+
+    async def get_expense_by_id(self, user_id: str, expense_id: int):
+        async with self.db.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT * FROM expenses WHERE id = $1 and user_id = $2
+            """, int(expense_id), str(user_id))
+
+        return row
+
+    async def delete_expense(self, user_id: str, expense_id: int) -> bool:
+        async with self.db.acquire() as conn:
+            # Validate ownership and existence.
+            expense = await conn.fetchval("""
+                SELECT * FROM expenses 
+                WHERE id = $1 AND user_id = $2
+            """, int(expense_id), str(user_id))
+            if not expense:
+                return False
+            # Delete the expense.
+            await conn.execute("""
+                DELETE FROM expenses 
+                WHERE id = $1 AND user_id = $2
+            """, int(expense_id), str(user_id))
+        return True
 
 
 db = Database()
