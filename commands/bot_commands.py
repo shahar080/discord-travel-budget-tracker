@@ -21,7 +21,7 @@ class BotCommands(commands.Cog):
         logger.info(
             f"Adding spent for {interaction.user.name}({interaction.user.id}) - Data: amount:{amount}, "
             f"currency: {currency}, description:{description}")
-        await perform_spent(interaction, str(amount), currency, description)
+        await perform_spent(interaction, amount, currency, description)
 
     @app_commands.command(name="total", description="View total spent in ILS")
     @app_commands.describe(
