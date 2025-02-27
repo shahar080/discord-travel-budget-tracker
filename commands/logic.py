@@ -6,6 +6,7 @@ import discord
 
 from db.database import db
 from utils import config
+from utils.common_funcs import format_time
 from views.ConfirmationView import ConfirmationView
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ def is_allowed_user(interaction: discord.Interaction) -> bool:
 
 
 ##### Spent #####
-async def perform_spent(interaction: discord.Interaction, amount: str, currency: str, description: str):
+async def perform_spent(interaction: discord.Interaction, amount: float, currency: str, description: str):
     success = await db.add_expense(interaction.user.id, amount, currency.upper(), description)
     if success is None:
         await interaction.response.send_message("⚠️ Please set your location first using `/location <location>`.",
@@ -128,7 +129,7 @@ def get_group_key(expense_dt, group_by):
     elif group_by == "mm/yy":
         return expense_dt.strftime("%m/%y")
     else:
-        return expense_dt.strftime("%m:%H %d/%m/%Y")
+        return format_time(expense_dt)
 
 
 def group_expenses(expenses_dict, group_by, specific_location=None):
@@ -165,7 +166,7 @@ def group_expenses(expenses_dict, group_by, specific_location=None):
 
 
 def format_expense(expense):
-    formatted_dt = expense["timestamp"].strftime("%m:%H %d/%m/%Y")
+    formatted_dt = format_time(expense['timestamp'])
     return f"* {expense['amount']:.2f} ILS on {formatted_dt} ({expense['original_amount']} {expense['currency']})\n"
 
 
@@ -179,8 +180,7 @@ async def perform_breakdown(interaction: discord.Interaction, _location: str = N
             total_ils = sum(exp["amount"] for exp in _breakdown.get(_location.lower(), []))
             response = f"📊 **Expense Breakdown for {_location}:**\n"
             for expense in _breakdown.get(_location.lower(), []):
-                dt = expense['timestamp']
-                formatted = dt.strftime("%m:%H %d/%m/%Y")
+                formatted = format_time(expense['timestamp'])
                 response += f"* {expense['amount']:.2f} ILS on {formatted} ({expense['original_amount']} {expense['currency']})\n"
             response += f"**Total**: {total_ils:.2f} ILS\n"
         else:
@@ -189,8 +189,7 @@ async def perform_breakdown(interaction: discord.Interaction, _location: str = N
             for loc, expenses in _breakdown.items():
                 response += f"**{loc}:**\n"
                 for expense in expenses:
-                    dt = expense['timestamp']
-                    formatted = dt.strftime("%m:%H %d/%m/%Y")
+                    formatted = format_time(expense['timestamp'])
                     response += f"* {expense['amount']:.2f} ILS on {formatted} ({expense['original_amount']} {expense['currency']})\n"
                     total_ils += expense['amount']
                 response += f"**Total**: {total_ils:.2f} ILS\n"
@@ -362,8 +361,7 @@ async def perform_list_expenses(interaction: discord.Interaction, _filter: str =
         for loc, expenses in _breakdown.items():
             response += f"**{loc}:**\n"
             for expense in expenses:
-                dt = expense["timestamp"]
-                formatted = dt.strftime("%m:%H %d/%m/%Y")
+                formatted = format_time(expense['timestamp'])
                 response += f"* [{expense['id']}] {expense['amount']:.2f} ILS on {formatted} ({expense['original_amount']} {expense['currency']})\n"
         await interaction.response.send_message(response)
         return
@@ -399,7 +397,6 @@ async def perform_list_expenses(interaction: discord.Interaction, _filter: str =
     for loc, expenses in filtered_breakdown.items():
         response += f"**{loc}:**\n"
         for expense in expenses:
-            dt = expense["timestamp"]
-            formatted = dt.strftime("%m:%H %d/%m/%Y")
+            formatted = format_time(expense['timestamp'])
             response += f"* [{expense['id']}] {expense['amount']:.2f} ILS on {formatted} ({expense['original_amount']} {expense['currency']})\n"
     await interaction.response.send_message(response)
